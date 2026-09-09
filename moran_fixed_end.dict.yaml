@@ -1,0 +1,38 @@
+# Rime dictionary
+# encoding: utf-8
+# license: CC-BY-SA 4.0
+
+---
+name: moran_fixed
+version: "20250301"
+sort: by_weight
+columns:
+  - text
+  - code
+  - stem
+  - weight
+  - comment
+#encoder:
+#  rules:
+#    - length_equal: 2
+#      formula: "AaAbBaBb"
+#    - length_equal: 3
+#      formula: "AaBaCa"
+#    - length_in_range: [4, 32]
+#      formula: "AaBaCaZa"
+#import_tables:
+#  - moran_fixed.symbols
+#  - moran_fixed_end
+...
+# --------------词库--------------#
+不是	bu
+duang	dd
+仇	qqr
+仇	qqrj
+是嗎	sm
+什	u
+仕	u
+是的	ud
+越	yz
+
+

@@ -62,6 +62,49 @@ fly:
     __append:
       - derive/wz;/wk;/
 
+  ny_nw:
+    __append:
+      - derive/ny;/nw;/
+  yn_yw:
+    __append:
+      - derive/yn;/yw;/
+  my_mw:
+    __append:
+      - derive/my;/mw;/
+  xw_xk:
+    __append:
+      - derive/xw;/xk;/
+  mu_mr:
+    __append:
+      - derive/mu;/mr;/
+  vr_vn:
+    __append:
+      - derive/vr;/vn;/
+  ce_cn:
+    __append:
+      - derive/ce;/cn;/
+  tv_tn:
+    __append:
+      - derive/tv;/tn;/
+  rf_rl:
+    __append:
+      - derive/rf;/rl;/
+  lw_lf:
+    __append:
+      - derive/lw;/lf;/
+  ly_lf:
+    __append:
+      - derive/ly;/lf;/
+  xy_xj:
+    __append:
+      - derive/xy;/xj;/
+  tb_tq:
+    __append:
+      - derive/tb;/tq;/
+  ly_lw:
+    __append:
+      - derive/ly;/lw;/
+      
 # 小寫可匹配大寫編碼（用於英語混輸）
 casefold:
   __append:

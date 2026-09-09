@@ -13,6 +13,7 @@ import_tables:
   - moran.tencent    # 騰訊詞庫
   - moran.computer   # 計算機術語
   - moran.moe
+  - moran.sentence_custom
 ...
 
 # 用戶自定義詞庫

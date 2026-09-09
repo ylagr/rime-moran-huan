@@ -1,0 +1,92 @@
+# Rime dictionary
+# encoding: utf-8
+# license: CC-BY-SA 4.0+
+# authors: ylagr
+
+---
+name: moran_fixed_pre
+version: "20251211"
+sort: original
+columns:
+  - text
+  - code
+  - stem
+  - weight
+  - comment
+encoder:
+  rules:
+    - length_equal: 2
+      formula: "AaAbBaBb"
+    - length_equal: 3
+      formula: "AaBaCa"
+    - length_in_range: [4, 32]
+      formula: "AaBaCaZa"
+import_tables:
+  - moran_fixed
+  - moran_fixed_end
+  - moran_fixed.symbols
+...
+
+#----------词库----------#
+
+啊啊	aa
+半	bj
+不就	bj
+打	da
+搭	da
+打	daf
+打	df
+呃呃	ee
+餓	eeu
+峨	eeuw
+加	ja
+角色	jcse
+集	jivm
+開個	klg
+拉	la
+落	la
+拉	laf
+擸	lafl
+俩	lf
+# todo 处理飞键固定码
+零	lw
+陵	lwe
+聆	lwel
+令	lwr
+玲	lww
+靈	lww
+嗎	m
+馬	ma
+木	mr
+名	mw
+沒	mz
+每	mzp
+寧	nwb
+哦哦	oo
+前	qm
+欠	qm
+前面	qm
+身嬌體柔	sjtr
+推	tn
+退	tn
+頭	tq
+透	tqz
+身嬌體柔	ujtr
+轉	vni
+文	wf
+行	xj
+下	xk
+小	x
+想	x
+谢谢	x
+像	xd
+详	xd
+卸	xxe
+些	xxv
+有点	yd
+也没	yemz
+因	ywd
+銀	ywj
+吟	ywk
+音	ywl
+引	ywg

@@ -76,6 +76,7 @@
 -- 目前版本的解決方法是：用戶選過字後，臨時禁用 table 翻譯器，使得
 -- script 可以看到所有輸入，從而解決造詞問題。
 
+local ijjp = require("ylagr.ijjp")
 local moran = require("moran")
 local top = {}
 
@@ -84,6 +85,8 @@ local kChar = 1
 local kWord = 2
 
 function top.init(env)
+   ijjp.init(env)
+   env.cache = {}
     -- Rime 組件
     env.fixed = Component.Translator(env.engine, "", "table_translator@fixed")
     env.smart = Component.Translator(env.engine, "", "script_translator@smart")
@@ -94,6 +97,10 @@ function top.init(env)
     -- 簡快碼相關配置項
     env.quick_code_indicator = env.engine.schema.config:get_string("moran/quick_code_indicator") or "⚡️"
     env.quick_code_in_sentence_making = moran.get_config_bool(env, "moran/quick_code_in_sentence_making", true)
+
+   env.sentence_indicator = env.engine.schema.config:get_string("moran/sentence_indicator") or "💧"
+   env.user_phrase_indicator = env.engine.schema.config:get_string("moran/user_phrase_indicator") or ""
+
     if env.name_space == 'with_reorder' then
         -- `F 表示碼表輸出，會被 reorder_filter 重排
         env.quick_code_indicator = '`F'
@@ -139,6 +146,7 @@ function top.fini(env)
     env.smart = nil
     env.rfixed = nil
     env.output_injected_secondary = nil
+    ijjp.fini(env)
     collectgarbage()
 end
 
@@ -153,7 +161,11 @@ function top.func(input, seg, env)
     local input_len = utf8.len(input)
     local inflexible = env.engine.context:get_option("inflexible")
     local indicator = env.quick_code_indicator
+
+   env.output_injected_secondary = {}
+
     local suppress_smart = env.disable_sentence_candidates_upto >= input_len
+
 
     -- 用戶尚未選過字時，調用碼表。
     local is_sentence_making = not (env.engine.context.input == input)
@@ -165,14 +177,26 @@ function top.func(input, seg, env)
                 if inflexible and env.inject_fixed_words and env.inject_fixed_chars then
                     -- 如果固詞, inject_fixed_words 和 inject_fixed_chars 同時打開，則理解爲掛接用法，直接輸出碼表。
                     for cand in fixed_res:iter() do
+		  if utf8.len(cand.text) >=4 then
+		     cand.comment = indicator
+		     table.insert(env.output_injected_secondary, cand)
+		  else
                         top.output_from_fixed(env, cand, is_sentence_making)
+		  end
+
                     end
                 elseif inflexible and env.inject_fixed_words then
                     -- 固詞 + 長詞 = 只有詞
                     for cand in fixed_res:iter() do
                         if utf8.len(cand.text) > 1 then
+		     if utf8.len(cand.text) >=4 then
+			cand.comment = indicator
+			table.insert(env.output_injected_secondary, cand)
+		     else
                             top.output_word_from_fixed(env, cand, is_sentence_making)
+		     end
                         end
+
                     end
                 elseif inflexible and env.inject_fixed_chars then
                     -- 固詞 + 單字 = 只有單字和二字詞
@@ -217,6 +241,11 @@ function top.func(input, seg, env)
     -- (1) 在此種情況下，下面的代碼會直接修改 env.output_injected_secondary
     -- (2) inject_prioritize != kAny 時會先把結果寄存在 inject_chars 和 inject_words 中
     --     在遍歷完成後才得到 env.output_injected_secondary
+   if fixed_triggered and #env.output_injected_secondary > 0 then
+      for i,c in pairs(env.output_injected_secondary) do
+	 top.output(env, c)
+      end
+   end
     env.output_injected_secondary = {}
     local inject_has_priority = env.inject_prioritize and (env.inject_prioritize ~= kAny)
     local inject_chars = {}  -- valid only when inject_has_priority
@@ -275,6 +304,10 @@ function top.func(input, seg, env)
         end
     end
 
+
+   local last_cand = env.smart_last_cand
+   local last_input_len = env.smart_last_input_len
+
     -- smart 在 fixed 之後輸出。
     -- 當需要詞輔時，保留 comment，以「提前」（用戶輸入詞輔前）提示輔助碼。
     local smart_iter = nil
@@ -285,12 +318,30 @@ function top.func(input, seg, env)
         local ijrq_enabled = env.ijrq_enable
             and ((input_len == 4) or (input_len == 5 and input:sub(5,5) == env.ijrq_suffix))
         if not ijrq_enabled then
+	 -- log.error("ijrq_enable: false")
             -- 不啓用出簡讓全時
+	 local last_index = 1
             for cand in smart_iter do
+	    if last_index == 1 then
+	       env.smart_last_cand = cand
+	       env.smart_last_input_len = input_len
+	       env.smart_last_input = input
+	       last_index = last_index + 1
+	       if fixed_triggered and last_cand ~= nil and input_len > 1 and last_input_len == input_len - 1 and (input_len ~= 5 or env.smart_last_cand.type == "sentence") then
+		  smart_second_output(env, input, input_len, seg, last_cand)
+	       end
+	    elseif last_index == 2 and last_cand ~= nil and input_len > 1 and last_input_len == input_len - 1 and (input_len ~= 5 or env.smart_last_cand.type == "sentence") then
+	       if not fixed_triggered then
+		  smart_second_output(env, input, input_len, seg, last_cand)
+	       end
+	       last_index = last_index + 1
+	    end
+
                 top.output(env, cand)
             end
         else
             -- 啓用出簡讓全時
+	 -- log.error("ijrq_enable: true")
             local immediate_set = {}
             local deferred_set = {}
             for cand in smart_iter do
@@ -321,8 +372,21 @@ function top.func(input, seg, env)
                 end
             end
             for i = 1, math.min(env.ijrq_defer, #immediate_set) do
+	    if i == 1 then
+	       env.smart_last_cand = immediate_set[1]
+	       env.smart_last_input_len = input_len
+	       env.smart_last_input = input
+	       if fixed_triggered and last_cand ~= nil and input_len > 1 and last_input_len == input_len - 1 then
+		  smart_second_output(env, input, input_len, seg, last_cand)
+	       end
+	       -- log.error("ijrq: len:" .. #immediate_set)
+	    end
                 top.output(env, immediate_set[i])
             end
+	 if not fixed_triggered and last_cand ~= nil and input_len > 1 and last_input_len == input_len - 1 then
+	    smart_second_output(env, input, input_len, seg, last_cand)
+	 end
+
             for i = 1, #deferred_set do
                 top.output(env, deferred_set[i])
             end
@@ -341,6 +405,54 @@ function top.func(input, seg, env)
             end
         end
     end
+   if smart == nil and input_len > 1 then
+      if last_cand ~= nil and last_input_len == input_len - 1 then
+	 smart_second_output(env, input, input_len, seg, last_cand)
+      end
+   end
+
+end
+
+function smart_second_output(env, input, input_len, seg, last_cand)
+   -- if input:sub(1,1) == ';' then
+      -- return
+   -- end
+   if input:find("^[;`]") or input:find("/") or input:find("^o[^o]+") then
+      return nil
+   end
+
+   if input_len >= 5 then
+
+      if env.commit_history_list ~= nil then
+	 local words_table = env.commit_history_trie:findByPrefix(input)
+	 local word = env.commit_history_trie:startsWith(input)
+	 if words_table ~= nil and #words_table >= 1 then
+	    local word_k, word_v = next(words_table)
+	    local text = env.commit_history_table[word_v]
+	    yield(Candidate(input, seg.start, seg._end, text, env.sentence_indicator))
+	 end
+      end
+   end
+   local append_cand = last_cand
+   local append_text = smart_second_fix_end(env, input, input_len)
+   if append_text ~= nil then
+      local candidate = Candidate(input, seg.start, seg._end, tostring(append_cand.text) .. tostring(append_text), "")
+      candidate.comment = env.sentence_indicator
+      yield(candidate)
+      -- top.output(env, candidate)
+   end
+end
+function smart_second_fix_end(env, input_str, input_len)
+   local input = input_str:sub(input_len)
+   if env.cache[input] then
+      return env.cache[input]
+   end
+   if input:find("/") then
+      return nil
+   end
+   local val = env.engine.schema.config:get_string("moran/fix_end/" .. input)
+   env.cache[input] = val
+   return val
 end
 
 -- | 每次 translation 開始前應該初始化 output 狀態
@@ -351,6 +463,10 @@ end
 
 -- | 支持候選注入的 yield
 function top.output(env, cand)
+   -- log.error(tostring(cand.type .. "|" .. cand.comment .. "|" .. cand.text .. "|" .. cand.quality .. "|" .. cand.start .. "|" .. cand._end .. "|" .. cand.preedit ))
+   if cand.type == "sentence" then
+      cand.comment = env.sentence_indicator
+   end
     -- 注意：需要保證 spelling hint 僅對 3 字以下詞開啓
     yield(cand)
     env.output_i = env.output_i + 1

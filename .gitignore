@@ -1,3 +1,8 @@
+user.yml
+yes
+yes.pub
+.github
+.idea
 #######################
 # Generated artifacts #
 #######################
@@ -35,3 +40,5 @@ __pycache__/
 **/.DS_Store
 build/
 trash/
+lua/input_stats.lua
+lua/input_stats_moran.lua
