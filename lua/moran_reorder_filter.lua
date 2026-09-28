@@ -48,6 +48,11 @@ function Top.init(env)
     -- for performance's sake.
     env.reorder_threshold = 50
     env.quick_code_indicator = env.engine.schema.config:get_string("moran/quick_code_indicator") or "⚡️"
+    local temp_indicator = env.engine.schema.config:get_string("moran/quick_code/indicator")
+    if temp_indicator == nil then
+        temp_indicator = env.engine.schema.config:get_string("moran/temp_quick_code_indicator")
+    end
+    env.temp_quick_code_indicator = temp_indicator or "✨"
     env.pin_indicator = env.engine.schema.config:get_string("moran/pin/indicator") or "📌"
 end
 
@@ -111,7 +116,7 @@ function Top.handle_collecting(env, ctx, cand)
         ctx.pin_set[cand.text] = true
         ctx.additional_check = 1
 
-    elseif cand.comment == "`F" then
+    elseif cand.comment == "`F" or cand.comment == "`T" then
         -- 碼表輸出（且非 Pin）
         if not ctx.pin_set[cand.text] then
             table.insert(ctx.fixed_list, cand)
@@ -236,13 +241,17 @@ end
 function Top.yield_exact(env, cand)
     if cand.comment == "`F" then
         cand.comment = env.quick_code_indicator
+    elseif cand.comment == "`T" then
+        cand.comment = env.temp_quick_code_indicator
     end
     yield(cand)
 end
 
 --- 用 scand 替代 fcand 並輸出。
 function Top.yield_smart_in_place_of_fixed(env, scand, fcand)
-    if fcand.comment == "`F" then
+    if fcand.comment == "`T" then
+        scand.comment = env.temp_quick_code_indicator .. scand.comment
+    elseif fcand.comment == "`F" then
         scand.comment = env.quick_code_indicator .. scand.comment
     elseif fcand.type == "pinned" then
         scand.comment = env.pin_indicator

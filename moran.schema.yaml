@@ -149,6 +149,14 @@ fixed:         # 固頂輸入模式設置，在 top_translator 中被調用
   enable_user_dict: false
   enable_encoder: false
   encode_commit_history: true
+  # 一簡臨時簡碼設置（在 moran_express_translator 中調用）：
+  # 默認快捷鍵：C-r 替換當前臨時簡碼候選項，C-c 添加新的臨時簡碼，C-k 刪除候選項/臨時簡碼
+  # 數據持久化文件默認爲用戶目錄下的 moran_quick_code.txt
+  # moran/quick_code/file: moran_quick_code.txt
+  # moran/quick_code/replace_key: "Control+r"
+  # moran/quick_code/add_key: "Control+c"
+  # moran/quick_code/delete_key: "Control+k"
+  # moran/quick_code/indicator: "✨"
 
 custom_phrase: # 自定義短語
   dictionary: ""

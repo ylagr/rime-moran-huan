@@ -83,7 +83,245 @@ local kAny = 0
 local kChar = 1
 local kWord = 2
 
+local quick_code = {
+    table = {},
+    filename = "moran_quick_code.txt",
+    loaded = false
+}
+
+function quick_code.get_file_path(env)
+    local cfg_file = env and env.engine and env.engine.schema.config:get_string("moran/quick_code/file")
+    local fname = cfg_file or quick_code.filename
+    local pathsep = (package.config or '/'):sub(1, 1)
+    if rime_api and rime_api.get_user_data_dir then
+        return rime_api.get_user_data_dir() .. pathsep .. fname
+    else
+        return fname
+    end
+end
+
+function quick_code.load(env)
+    local path = quick_code.get_file_path(env)
+    local file = io.open(path, "r")
+    quick_code.table = {}
+    if not file then
+        quick_code.loaded = true
+        return
+    end
+    for line in file:lines() do
+        local s = line:match("^%s*(.-)%s*$")
+        if s ~= "" and not s:match("^#") then
+            local code, text = s:match("^(%a)%s+(.+)$")
+            if not code or not text then
+                text, code = s:match("^(.+)%s+(%a)$")
+            end
+            if code and text then
+                code = code:lower()
+                if not quick_code.table[code] then
+                    quick_code.table[code] = {}
+                end
+                local exists = false
+                for _, v in ipairs(quick_code.table[code]) do
+                    if v == text then
+                        exists = true
+                        break
+                    end
+                end
+                if not exists then
+                    table.insert(quick_code.table[code], text)
+                end
+            end
+        end
+    end
+    file:close()
+    quick_code.loaded = true
+end
+
+function quick_code.save(env)
+    local path = quick_code.get_file_path(env)
+    local file, err = io.open(path, "w")
+    if not file then
+        log.error("moran_express_translator: failed to open " .. path .. " for writing: " .. tostring(err))
+        return false
+    end
+    file:write("# Rime Moran temporary quick codes (魔然一簡臨時簡碼)\n")
+    file:write("# Format: code <tab> text\n")
+    local codes = {}
+    for c, _ in pairs(quick_code.table) do
+        table.insert(codes, c)
+    end
+    table.sort(codes)
+    for _, c in ipairs(codes) do
+        for _, text in ipairs(quick_code.table[c]) do
+            file:write(c .. "\t" .. text .. "\n")
+        end
+    end
+    file:close()
+    return true
+end
+
+function quick_code.replace(code, text, env)
+    quick_code.table[code] = { text }
+    quick_code.save(env)
+end
+
+function quick_code.add(code, text, env)
+    if not quick_code.table[code] then
+        quick_code.table[code] = {}
+    end
+    local exists = false
+    for _, v in ipairs(quick_code.table[code]) do
+        if v == text then
+            exists = true
+            break
+        end
+    end
+    if not exists then
+        table.insert(quick_code.table[code], text)
+    end
+    quick_code.save(env)
+end
+
+function quick_code.delete(code, text, env)
+    if not quick_code.loaded then
+        quick_code.load(env)
+    end
+    if not quick_code.table[code] then
+        return false
+    end
+    local new_list = {}
+    local found = false
+    for _, v in ipairs(quick_code.table[code]) do
+        if v == text then
+            found = true
+        else
+            table.insert(new_list, v)
+        end
+    end
+    if found then
+        if #new_list == 0 then
+            quick_code.table[code] = nil
+        else
+            quick_code.table[code] = new_list
+        end
+        quick_code.save(env)
+        return true
+    end
+    return false
+end
+
+function quick_code.get(code, env)
+    if not quick_code.loaded then
+        quick_code.load(env)
+    end
+    return quick_code.table[code]
+end
+
+local kRejected = 0
+local kAccepted = 1
+local kNoop = 2
+
+function top.quick_code_processor(key_event, env)
+    if key_event:release() then
+        return kNoop
+    end
+
+    local cfg = env.engine.schema.config
+    local replace_key = cfg:get_string("moran/quick_code/replace_key") or "Control+r"
+    local add_key = cfg:get_string("moran/quick_code/add_key") or "Control+c"
+    local delete_key = cfg:get_string("moran/quick_code/delete_key") or "Control+k"
+
+    local is_replace = false
+    local is_add = false
+    local is_delete = false
+
+    local repr = key_event:repr()
+    if repr == replace_key or (key_event:ctrl() and not key_event:alt() and not key_event:shift() and (key_event.keycode == 0x72 or key_event.keycode == 0x52)) then
+        is_replace = true
+    elseif repr == add_key or (key_event:ctrl() and not key_event:alt() and not key_event:shift() and (key_event.keycode == 0x63 or key_event.keycode == 0x43)) then
+        is_add = true
+    elseif repr == delete_key or repr == "Shift+Delete" or repr == "Control+Delete" or
+           (key_event:ctrl() and not key_event:alt() and not key_event:shift() and (key_event.keycode == 0x6b or key_event.keycode == 0x4b)) or
+           (key_event:shift() and not key_event:alt() and not key_event:ctrl() and (key_event.keycode == 0xffff or key_event.keycode == 0xff9f)) then
+        is_delete = true
+    end
+
+    if not is_replace and not is_add and not is_delete then
+        return kNoop
+    end
+
+    local context = env.engine.context
+    if not context:is_composing() then
+        return kNoop
+    end
+
+    local cand = context:get_selected_candidate()
+    if cand == nil then
+        return kNoop
+    end
+
+    local text = (cand.get_genuine and cand:get_genuine().text) or cand.text
+    if not text or text == "" then
+        return kNoop
+    end
+
+    local composition = context.composition
+    local code = nil
+    if not composition:empty() then
+        local seg = composition:back()
+        local seg_input = context.input:sub(seg._start + 1, seg._end)
+        code = seg_input:sub(1, 1):lower()
+    end
+
+    if is_replace then
+        if not code or not code:match("^[a-z]$") then
+            return kNoop
+        end
+        quick_code.replace(code, text, env)
+        context:refresh_non_confirmed_composition()
+        return kAccepted
+    elseif is_add then
+        if not code or not code:match("^[a-z]$") then
+            return kNoop
+        end
+        quick_code.add(code, text, env)
+        context:refresh_non_confirmed_composition()
+        return kAccepted
+    elseif is_delete then
+        local deleted_quick = false
+        if cand.type == "quick_code" then
+            if code and quick_code.table[code] then
+                deleted_quick = quick_code.delete(code, text, env)
+            end
+            if not deleted_quick then
+                for c, _ in pairs(quick_code.table) do
+                    if quick_code.delete(c, text, env) then
+                        deleted_quick = true
+                        break
+                    end
+                end
+            end
+        else
+            if code and code:match("^[a-z]$") and quick_code.table[code] then
+                deleted_quick = quick_code.delete(code, text, env)
+            end
+        end
+
+        if context.delete_current_selection then
+            pcall(function()
+                return context:delete_current_selection()
+            end)
+        end
+
+        context:refresh_non_confirmed_composition()
+        return kAccepted
+    end
+
+    return kNoop
+end
+
 function top.init(env)
+    quick_code.load(env)
     -- Rime 組件
     env.fixed = Component.Translator(env.engine, "", "table_translator@fixed")
     env.smart = Component.Translator(env.engine, "", "script_translator@smart")
@@ -93,13 +331,21 @@ function top.init(env)
 
     -- 簡快碼相關配置項
     env.quick_code_indicator = env.engine.schema.config:get_string("moran/quick_code_indicator") or "⚡️"
+    local temp_indicator = env.engine.schema.config:get_string("moran/quick_code/indicator")
+    if temp_indicator == nil then
+        temp_indicator = env.engine.schema.config:get_string("moran/temp_quick_code_indicator")
+    end
+    env.temp_quick_code_indicator = temp_indicator or "✨"
+
     env.quick_code_in_sentence_making = moran.get_config_bool(env, "moran/quick_code_in_sentence_making", true)
     if env.name_space == 'with_reorder' then
         -- `F 表示碼表輸出，會被 reorder_filter 重排
         env.quick_code_indicator = '`F'
+        env.temp_indicator = '`T'
     else
         -- 若不啓用 reorder_filter，則不允許造句時產生碼表輸出
         env.quick_code_in_sentence_making = false
+        env.temp_indicator = env.temp_quick_code_indicator
     end
 
     -- 出簡讓全相關配置項
@@ -157,6 +403,7 @@ function top.func(input, seg, env)
 
     -- 用戶尚未選過字時，調用碼表。
     local is_sentence_making = not (env.engine.context.input == input)
+    local fixed_words = {}
     if not is_sentence_making or env.quick_code_in_sentence_making then
         local fixed_res = env.fixed:query(input, seg)
         -- 如果輸入長度爲 4，只輸出 2 字詞。
@@ -165,12 +412,14 @@ function top.func(input, seg, env)
                 if inflexible and env.inject_fixed_words and env.inject_fixed_chars then
                     -- 如果固詞, inject_fixed_words 和 inject_fixed_chars 同時打開，則理解爲掛接用法，直接輸出碼表。
                     for cand in fixed_res:iter() do
+                        fixed_words[cand.text] = true
                         top.output_from_fixed(env, cand, is_sentence_making)
                     end
                 elseif inflexible and env.inject_fixed_words then
                     -- 固詞 + 長詞 = 只有詞
                     for cand in fixed_res:iter() do
                         if utf8.len(cand.text) > 1 then
+                            fixed_words[cand.text] = true
                             top.output_word_from_fixed(env, cand, is_sentence_making)
                         end
                     end
@@ -179,8 +428,10 @@ function top.func(input, seg, env)
                     for cand in fixed_res:iter() do
                         local cand_len = utf8.len(cand.text)
                         if cand_len == 1 then
+                            fixed_words[cand.text] = true
                             top.output_char_from_fixed(env, cand)
                         elseif cand_len == 2 then
+                            fixed_words[cand.text] = true
                             top.output_word_from_fixed(env, cand, is_sentence_making)
                         end
                     end
@@ -189,6 +440,7 @@ function top.func(input, seg, env)
                     for cand in fixed_res:iter() do
                         local cand_len = utf8.len(cand.text)
                         if cand_len == 2 then
+                            fixed_words[cand.text] = true
                             top.output_word_from_fixed(env, cand, is_sentence_making)
                         end
                     end
@@ -198,12 +450,29 @@ function top.func(input, seg, env)
             elseif input_len < 4 then          -- 造句模式下，只使用固定單字（詞語無法固定）
                 for cand in fixed_res:iter() do
                     if not is_sentence_making or utf8.len(cand.text) == 1 then
+                        fixed_words[cand.text] = true
                         top.output_from_fixed(env, cand, is_sentence_making)
                     end
                 end
             elseif not is_sentence_making then  -- input_len > 4，輸出所有
                 for cand in fixed_res:iter() do
+                    fixed_words[cand.text] = true
                     top.output_from_fixed(env, cand, is_sentence_making)
+                end
+            end
+        end
+
+        -- 在 fixed 讀取之後添加一簡臨時簡碼
+        if input_len == 1 then
+            local temp_words = quick_code.get(input, env)
+            if temp_words then
+                for _, word in ipairs(temp_words) do
+                    if not fixed_words[word] then
+                        fixed_words[word] = true
+                        local cand = Candidate("quick_code", seg._start, seg._end, word, env.temp_indicator or env.temp_quick_code_indicator or "")
+                        cand.preedit = input
+                        top.output(env, cand)
+                    end
                 end
             end
         end
@@ -340,6 +609,16 @@ function top.func(input, seg, env)
                 yield(cand)
             end
         end
+        if input_len == 1 then
+            local temp_words = quick_code.get(input, env)
+            if temp_words then
+                for _, word in ipairs(temp_words) do
+                    local cand = Candidate("quick_code", seg._start, seg._end, word, env.temp_indicator or env.temp_quick_code_indicator or "")
+                    cand.preedit = input
+                    yield(cand)
+                end
+            end
+        end
     end
 end
 
@@ -420,6 +699,13 @@ function top.append_lists(max, l1, l2)
     end
     return result
 end
+
+top.quick_code = quick_code
+top.processor = {
+    init = function(env) end,
+    fini = function(env) end,
+    func = top.quick_code_processor,
+}
 
 return top
 

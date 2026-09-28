@@ -303,6 +303,11 @@ return {
             variant_toggle_processor,
         }
 
+        local express = require("moran_express_translator")
+        if express and express.quick_code_processor then
+            table.insert(env.processors, express.quick_code_processor)
+        end
+
         local cfg = env.engine.schema.config
         if cfg:get_bool("moran/shorthands") then
             table.insert(env.processors, shorthand_processor)
