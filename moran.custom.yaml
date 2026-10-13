@@ -1,9 +1,6 @@
 patch:
   
   schema/dependencies/+: [huan,moran_japanese]
-  engine/translators/+:
-    # - table_translator@japanese  #混入正常输入
-    - table_translator@japanese_o
   "menu/page_size": 6
   ascii_composer/good_old_caps_lock: true
   ascii_composer/switch_key/Shift_L: noop
@@ -47,6 +44,8 @@ patch:
     # - lua_translator@*ylagr.commit_history
     # - lua_translator@*ylagr.ijjp
     - lua_translator@*ylagr.input_statistics
+    # - table_translator@japanese  #混入正常输入
+    - table_translator@japanese_o
   mine_simplifier:
     opencc_config: moran_mine_t2s.json
     option_name: mine_t_to_s
