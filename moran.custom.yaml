@@ -1,5 +1,16 @@
 patch:
-  
+  # 处理输入栏光标移动，需要librime >= 1.16.0 才有no_loop等属性，才会自动在方案引用default：/{navigator,se...
+  # 在边界按音节移动，在音节内部按字符移动 	rewind | forward
+  # 按字符移动（循环） 				left_by_char | right_by_char
+  # 按字符移动（不循环）			left_by_char_no_loop | right_by_char_no_loop
+  # 按字符移动（循环）				left_by_syllable | right_by_syllable
+  # 按字符移动（不循环）			left_by_syllable_no_loop | right_by_syllable_no_loop
+  # 首尾跳转					home | end
+  navigator/bindings:
+    Left: rewind
+    Right: right_by_char 
+    # Shift+Left: left_by_syllable #this is also default value
+    # Shift+Right: right_by_syllable #this is also default value
   schema/dependencies/+: [huan,moran_japanese]
   "menu/page_size": 6
   ascii_composer/good_old_caps_lock: true
